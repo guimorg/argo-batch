@@ -1,0 +1,74 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: batch-mall-
+spec:
+  entrypoint: batch
+  volumeClaimTemplates:
+  - metadata:
+      name: batch-dir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+
+  templates:
+  - name: batch
+    steps:
+    - - name: download
+        template: download-data
+    - - name: train
+        template: train-model
+    - - name: predict
+        template: predict-data
+
+  - name: download-data
+    container:
+      image: batch-data:latest
+      command: [python3, get_data.py]
+      env:
+        - name: ACCESS_KEY
+          value: SOME_VALUE 
+        - name: SECRET_KEY
+          value: SOME_VALUE 
+        - name: BUCKET_NAME
+          value: SOME_VALUE 
+        - name: OUT_DIR
+          value: /mnt/vol
+        - name: KEYS
+          value: Mall_Customers.csv
+      volumeMounts: 
+      - name: batch-dir
+        mountPath: /mnt/vol
+  - name: train-model
+    container:
+      image: batch-train:latest
+      imagePullPolicy: Always
+      volumeMounts: 
+      - name: batch-dir
+        mountPath: /mnt/vol
+    outputs:
+      artifacts:
+      - name: model
+        path: /mnt/vol/kmeans.joblib
+  - name: predict-data
+    container:
+      image: batch-predict:latest
+      env:
+        - name: OUT_PATH
+          value: /mnt/vol/Prediction_Mall_Customers.csv
+        - name: MODEL
+          value: /mnt/vol/kmeans.joblib
+        - name: FILE
+          value: /mnt/vol/Mall_Customers.csv
+        - name: COLUMNS
+          value: Spending Score (1-100);Annual Income (k$)
+      command: [python3, predict.py]
+      volumeMounts: 
+      - name: batch-dir
+        mountPath: /mnt/vol
+    outputs:
+      artifacts:
+      - name: data
+        path: /mnt/vol/Prediction_Mall_Customers.csv
